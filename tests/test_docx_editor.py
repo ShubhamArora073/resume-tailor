@@ -2,6 +2,7 @@ import os
 import tempfile
 import pytest
 from docx import Document
+from docx.shared import Pt
 
 from docx_editor import extract_paragraphs, apply_rewrites
 
@@ -48,7 +49,7 @@ def test_apply_rewrites_preserves_formatting():
         para = doc.add_paragraph()
         run = para.add_run("Original bold text")
         run.bold = True
-        run.font.size = 140000  # 14pt
+        run.font.size = Pt(14)
         doc.save(docx_path)
 
         output_path = os.path.join(tmp, "output.docx")
@@ -59,7 +60,7 @@ def test_apply_rewrites_preserves_formatting():
         result_para = result_doc.paragraphs[0]
         assert result_para.text == "Rewritten bold text"
         assert result_para.runs[0].bold is True
-        assert result_para.runs[0].font.size == 140000
+        assert result_para.runs[0].font.size == Pt(14)
 
 
 def test_apply_rewrites_skips_missing_indices():
