@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+@page {
+    size: A4;
+    margin: 28pt 0 20pt 0;
+    background: linear-gradient(to right, #2c3e50 200pt, #fff 200pt);
+}
+
+@page :first {
+    margin: 0;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: "Segoe UI", Calibri, Arial, sans-serif;
+    font-size: {{ font_size }}pt;
+    line-height: {{ line_height }};
+    color: #222;
+}
+
+.page-wrapper {
+    position: relative;
+}
+
+/* Sidebar — absolute so it renders once on page 1 only.
+   The dark strip on page 2+ comes from @page background. */
+.sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200pt;
+    padding: 20pt 14pt;
+    color: #ecf0f1;
+}
+
+.photo-container {
+    text-align: center;
+    margin-bottom: 14pt;
+}
+
+.photo-container img {
+    width: 110pt;
+    height: 110pt;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3pt solid #ecf0f1;
+}
+
+.sidebar-name {
+    font-size: 13pt;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 2pt;
+    color: #fff;
+}
+
+.sidebar-title {
+    font-size: 8.5pt;
+    text-align: center;
+    color: #bdc3c7;
+    margin-bottom: 14pt;
+}
+
+.sidebar-section {
+    margin-bottom: 12pt;
+}
+
+.sidebar-section-title {
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8pt;
+    color: #3498db;
+    border-bottom: 0.5pt solid #3498db;
+    padding-bottom: 2pt;
+    margin-bottom: 5pt;
+}
+
+.contact-item {
+    font-size: 7.5pt;
+    margin-bottom: 3pt;
+    color: #ecf0f1;
+    word-break: break-all;
+}
+
+.contact-icon {
+    display: inline-block;
+    width: 11pt;
+    color: #3498db;
+    font-weight: 700;
+}
+
+.skill-item {
+    font-size: 7.5pt;
+    margin-bottom: 2pt;
+    color: #ecf0f1;
+}
+
+.lang-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 7.5pt;
+    margin-bottom: 2pt;
+    color: #ecf0f1;
+}
+
+.lang-level {
+    color: #3498db;
+    font-weight: 600;
+}
+
+.cert-item {
+    font-size: 7.5pt;
+    margin-bottom: 2pt;
+    color: #ecf0f1;
+}
+
+/* Main Content — flows naturally across pages */
+.main-content {
+    margin-left: 200pt;
+    padding: {{ page_padding }}pt 18pt;
+}
+
+.section {
+    margin-bottom: {{ section_margin }}pt;
+}
+
+.section-title {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #2c3e50;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    border-bottom: 1.5pt solid #2c3e50;
+    padding-bottom: 3pt;
+    margin-bottom: 8pt;
+}
+
+.summary-text {
+    color: #333;
+    line-height: 1.4;
+}
+
+.job {
+    margin-bottom: {{ job_margin }}pt;
+}
+
+.job-line1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.job-company {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.job-dates {
+    font-size: 8.5pt;
+    color: #555;
+    white-space: nowrap;
+}
+
+.job-line2 {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 3pt;
+}
+
+.job-title {
+    font-size: 9.5pt;
+    font-style: italic;
+    color: #34495e;
+}
+
+.job-location {
+    font-size: 8.5pt;
+    color: #666;
+}
+
+.bullets {
+    list-style: none;
+    padding-left: 0;
+}
+
+.bullets li {
+    padding-left: 10pt;
+    text-indent: -10pt;
+    margin-bottom: {{ bullet_margin }}pt;
+    line-height: {{ line_height }};
+}
+
+.bullets li::before {
+    content: "\25b8  ";
+    color: #3498db;
+    font-weight: 700;
+}
+
+.edu-item {
+    margin-bottom: 5pt;
+}
+
+.edu-line1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.edu-institution {
+    font-weight: 700;
+    font-size: 9.5pt;
+}
+
+.edu-year {
+    font-size: 8.5pt;
+    color: #555;
+}
+
+.edu-degree {
+    font-size: 9pt;
+    color: #444;
+}
+
+.achievement-item {
+    margin-bottom: 4pt;
+    font-size: 9pt;
+}
+
+.achievement-item strong {
+    color: #2c3e50;
+}
+</style>
+</head>
+<body>
+
+<div class="page-wrapper">
+    <div class="sidebar">
+        {% if photo_path %}
+        <div class="photo-container">
+            <img src="file://{{ photo_path }}" alt="Photo">
+        </div>
+        {% endif %}
+
+        <div class="sidebar-name">{{ data.name }}</div>
+        <div class="sidebar-title">{{ data.title }}</div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Contact</div>
+            {% if data.contact.phone %}
+            <div class="contact-item"><span class="contact-icon">T</span> {{ data.contact.phone }}</div>
+            {% endif %}
+            {% if data.contact.email %}
+            <div class="contact-item"><span class="contact-icon">E</span> {{ data.contact.email }}</div>
+            {% endif %}
+            {% if data.contact.location %}
+            <div class="contact-item"><span class="contact-icon">L</span> {{ data.contact.location }}</div>
+            {% endif %}
+            {% if data.contact.linkedin %}
+            <div class="contact-item"><span class="contact-icon">W</span> {{ data.contact.linkedin }}</div>
+            {% endif %}
+            {% if data.contact.medium %}
+            <div class="contact-item"><span class="contact-icon">M</span> {{ data.contact.medium }}</div>
+            {% endif %}
+        </div>
+
+        {% if data.skills %}
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Skills</div>
+            {% for skill in data.skills %}
+            <div class="skill-item">{{ skill }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if data.languages %}
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Languages</div>
+            {% for lang in data.languages %}
+            <div class="lang-item">
+                <span>{{ lang.name }}</span>
+                <span class="lang-level">{{ lang.level }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if data.certifications %}
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Certifications</div>
+            {% for cert in data.certifications %}
+            <div class="cert-item">{{ cert }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="main-content">
+        {% if data.summary %}
+        <div class="section">
+            <div class="section-title">Professional Summary</div>
+            <p class="summary-text">{{ data.summary }}</p>
+        </div>
+        {% endif %}
+
+        {% if data.experience %}
+        <div class="section">
+            <div class="section-title">Professional Experience</div>
+            {% for job in data.experience %}
+            <div class="job">
+                <div class="job-line1">
+                    <span class="job-company">{{ job.company }}</span>
+                    <span class="job-dates">{{ job.start_date }} – {{ job.end_date }}</span>
+                </div>
+                <div class="job-line2">
+                    <span class="job-title">{{ job.title }}</span>
+                    <span class="job-location">{{ job.location }}</span>
+                </div>
+                <ul class="bullets">
+                    {% for bullet in job.bullets %}
+                    <li>{{ bullet }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if data.education %}
+        <div class="section">
+            <div class="section-title">Education</div>
+            {% for edu in data.education %}
+            <div class="edu-item">
+                <div class="edu-line1">
+                    <span class="edu-institution">{{ edu.institution }}</span>
+                    <span class="edu-year">{{ edu.end_date }}</span>
+                </div>
+                <div class="edu-degree">{{ edu.degree }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if data.achievements %}
+        <div class="section">
+            <div class="section-title">Awards & Recognition</div>
+            {% for ach in data.achievements %}
+            <div class="achievement-item">
+                <strong>{{ ach.title }}:</strong> {{ ach.description }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+</body>
+</html>

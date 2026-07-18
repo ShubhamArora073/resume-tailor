@@ -8,3 +8,5 @@ venv/
 *.pdf
 !tests/fixtures/*.pdf
 !tests/fixtures/*.docx
+.superpowers/
+.claude/

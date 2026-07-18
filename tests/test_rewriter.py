@@ -1,4 +1,5 @@
 import json
+import os
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -6,13 +7,10 @@ from rewriter import rewrite_resume, build_prompt, parse_response, RewriteResult
 
 
 def test_build_prompt_includes_jd_and_resume():
-    paragraphs = [
-        {"index": 0, "text": "Software Engineer with 5 years experience", "heading_level": None},
-        {"index": 1, "text": "Built CI/CD pipelines", "heading_level": None},
-    ]
+    resume_text = "Software Engineer with 5 years experience\nBuilt CI/CD pipelines"
     jd = "Looking for a DevOps engineer with Kubernetes experience"
 
-    prompt = build_prompt(paragraphs, jd)
+    prompt = build_prompt(resume_text, jd)
 
     assert "Software Engineer with 5 years experience" in prompt
     assert "Looking for a DevOps engineer" in prompt
@@ -21,26 +19,27 @@ def test_build_prompt_includes_jd_and_resume():
 
 def test_parse_response_valid_json():
     raw = json.dumps({
-        "sections": [
-            {
-                "heading": "Experience",
-                "paragraphs": [
-                    {"index": 0, "original": "old", "rewritten": "new"},
-                    {"index": 1, "original": "old2", "rewritten": "new2"},
-                ]
-            }
-        ],
+        "name": "John Doe",
+        "title": "DevOps Engineer",
+        "contact": {"email": "j@d.com", "phone": "123", "location": "NY"},
+        "summary": "Experienced engineer.",
+        "experience": [],
+        "skills": ["Python"],
+        "education": [],
+        "certifications": [],
+        "achievements": [],
         "keywords_added": ["Kubernetes", "Docker"],
-        "match_score": 82
+        "match_score": 82,
     })
 
     result = parse_response(raw)
 
     assert isinstance(result, RewriteResult)
-    assert len(result.rewrites) == 2
-    assert result.rewrites[0] == {"index": 0, "rewritten": "new"}
+    assert result.resume_data["name"] == "John Doe"
     assert result.keywords_added == ["Kubernetes", "Docker"]
     assert result.match_score == 82
+    assert "keywords_added" not in result.resume_data
+    assert "match_score" not in result.resume_data
 
 
 def test_parse_response_invalid_json_raises():
@@ -48,6 +47,7 @@ def test_parse_response_invalid_json_raises():
         parse_response("not json at all")
 
 
+@patch.dict(os.environ, {"AI_GATEWAY_KEY": "fake-key", "AI_GATEWAY_USER": "test@test.com"})
 @patch("rewriter.anthropic")
 def test_rewrite_resume_calls_claude_and_returns_result(mock_anthropic):
     mock_client = MagicMock()
@@ -56,24 +56,22 @@ def test_rewrite_resume_calls_claude_and_returns_result(mock_anthropic):
     mock_response = MagicMock()
     mock_response.content = [MagicMock()]
     mock_response.content[0].text = json.dumps({
-        "sections": [
-            {
-                "heading": "Summary",
-                "paragraphs": [
-                    {"index": 0, "original": "old", "rewritten": "Tailored summary"}
-                ]
-            }
-        ],
+        "name": "John Doe",
+        "title": "DevOps Engineer",
+        "contact": {"email": "j@d.com", "phone": "123", "location": "NY"},
+        "summary": "Tailored summary.",
+        "experience": [],
+        "skills": ["Python"],
+        "education": [],
+        "certifications": [],
+        "achievements": [],
         "keywords_added": ["Python"],
-        "match_score": 90
+        "match_score": 90,
     })
     mock_client.messages.create.return_value = mock_response
 
-    paragraphs = [{"index": 0, "text": "Original summary", "heading_level": None}]
-    jd = "Python developer needed"
+    result = rewrite_resume("Original resume text", "Python developer needed")
 
-    result = rewrite_resume(paragraphs, jd)
-
-    assert result.rewrites[0]["rewritten"] == "Tailored summary"
+    assert result.resume_data["summary"] == "Tailored summary."
     assert result.match_score == 90
     mock_client.messages.create.assert_called_once()

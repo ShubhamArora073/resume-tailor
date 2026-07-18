@@ -1,18 +1,15 @@
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from httpx import AsyncClient, ASGITransport
 from dataclasses import dataclass
 
-from main import app
-
-FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
-SAMPLE_PDF = os.path.join(FIXTURES_DIR, "sample.pdf")
+from main import app, extract_jd_keywords, compute_match_score
 
 
 @dataclass
 class MockRewriteResult:
-    rewrites: list
+    resume_data: dict
     keywords_added: list
     match_score: int
 
@@ -44,55 +41,73 @@ async def test_tailor_endpoint_rejects_short_jd():
 
 
 @pytest.mark.asyncio
+@patch("main.generate_pdf")
 @patch("main.rewrite_resume")
-@patch("main.docx_to_pdf")
-@patch("main.apply_rewrites")
-@patch("main.extract_paragraphs")
-@patch("main.pdf_to_docx")
-async def test_tailor_endpoint_success(
-    mock_pdf_to_docx,
-    mock_extract,
-    mock_apply,
-    mock_docx_to_pdf,
-    mock_rewrite,
-    tmp_path,
-):
-    fake_docx = str(tmp_path / "fake.docx")
-    fake_output = str(tmp_path / "output.docx")
-    fake_pdf = str(tmp_path / "output.pdf")
-
-    open(fake_docx, "w").close()
-    open(fake_output, "w").close()
-    with open(fake_pdf, "wb") as f:
-        f.write(b"%PDF-1.4 fake pdf content")
-
-    mock_pdf_to_docx.return_value = fake_docx
-    mock_extract.return_value = [{"index": 0, "text": "hello", "heading_level": None}]
+@patch("main.extract_text_from_pdf")
+async def test_tailor_endpoint_success(mock_extract, mock_rewrite, mock_genpdf):
+    mock_extract.return_value = "John Doe\nSoftware Engineer with AWS and Kubernetes"
     mock_rewrite.return_value = MockRewriteResult(
-        rewrites=[{"index": 0, "rewritten": "tailored hello"}],
-        keywords_added=["Python"],
+        resume_data={
+            "name": "John Doe",
+            "title": "DevOps Engineer",
+            "contact": {"email": "j@d.com", "phone": "123", "location": "NY"},
+            "summary": "Experienced DevOps engineer.",
+            "experience": [],
+            "skills": ["AWS", "Kubernetes"],
+            "education": [],
+            "certifications": [],
+            "achievements": [],
+        },
+        keywords_added=["Kubernetes"],
         match_score=85,
     )
-    mock_apply.return_value = fake_output
-    mock_docx_to_pdf.return_value = fake_pdf
+
+    def fake_gen(data, output_path, photo_path=None):
+        with open(output_path, "wb") as f:
+            f.write(b"%PDF-1.4 fake pdf content here")
+        return output_path
+
+    mock_genpdf.side_effect = fake_gen
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/tailor",
             files={"file": ("resume.pdf", b"%PDF-fake", "application/pdf")},
-            data={"job_description": "x" * 60},
+            data={"job_description": "Looking for DevOps engineer with AWS and Kubernetes experience " * 3},
         )
 
     assert response.status_code == 200
-    assert response.headers["content-type"] == "application/pdf"
-    assert response.headers["x-match-score"] == "85"
+    data = response.json()
+    assert "request_id" in data
+    assert "match_score" in data
+    assert "keywords_found" in data
+    assert "keywords_missing" in data
+    assert "resume_data" in data
+    assert data["claude_score"] == 85
 
 
 @pytest.mark.asyncio
-async def test_root_redirects_to_static():
+async def test_root_redirects():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test", follow_redirects=False) as client:
         response = await client.get("/")
-    assert response.status_code == 307  # RedirectResponse default
-    assert response.headers["location"] == "/static/index.html"
+    assert response.status_code == 307
+
+
+def test_extract_jd_keywords():
+    jd = "We need someone with AWS, Kubernetes, Docker, and CI/CD experience. Site reliability engineering is key."
+    keywords = extract_jd_keywords(jd)
+    kw_lower = [k.lower() for k in keywords]
+    assert "aws" in kw_lower
+    assert "kubernetes" in kw_lower
+    assert "docker" in kw_lower
+
+
+def test_compute_match_score():
+    resume = "Experienced in AWS and Kubernetes. Built CI/CD pipelines using Docker."
+    keywords = ["AWS", "Kubernetes", "Docker", "Terraform", "Ansible"]
+    result = compute_match_score(resume, keywords)
+    assert result["score"] == 60
+    assert len(result["found"]) == 3
+    assert len(result["missing"]) == 2
