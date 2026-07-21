@@ -111,3 +111,113 @@ def test_compute_match_score():
     assert result["score"] == 60
     assert len(result["found"]) == 3
     assert len(result["missing"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_download_returns_pdf():
+    request_id = "12345678-1234-1234-1234-123456789abc"
+    work_dir = os.path.join("/tmp/resume-tailor", request_id)
+    os.makedirs(work_dir, exist_ok=True)
+    pdf_path = os.path.join(work_dir, "tailored_resume.pdf")
+
+    try:
+        with open(pdf_path, "wb") as f:
+            f.write(b"%PDF-1.4 test content")
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(f"/download/{request_id}")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/pdf"
+        assert b"%PDF-1.4" in response.content
+    finally:
+        if os.path.exists(work_dir):
+            import shutil
+            shutil.rmtree(work_dir)
+
+
+@pytest.mark.asyncio
+async def test_download_not_found():
+    request_id = "87654321-4321-4321-4321-cba987654321"
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/download/{request_id}")
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+@patch("main.generate_pdf")
+async def test_regenerate_creates_pdf(mock_genpdf):
+    request_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    work_dir = os.path.join("/tmp/resume-tailor", request_id)
+    os.makedirs(work_dir, exist_ok=True)
+
+    try:
+        def fake_gen(data, output_path, photo_path=None):
+            with open(output_path, "wb") as f:
+                f.write(b"%PDF-1.4 regenerated")
+            return output_path
+
+        mock_genpdf.side_effect = fake_gen
+
+        resume_data = {
+            "name": "Jane Doe",
+            "title": "Engineer",
+            "contact": {"email": "jane@example.com", "phone": "555", "location": "SF"},
+            "summary": "Experienced engineer.",
+            "experience": [],
+            "skills": ["Python"],
+            "education": [],
+            "certifications": [],
+            "achievements": [],
+        }
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(f"/regenerate/{request_id}", json=resume_data)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+        mock_genpdf.assert_called_once()
+    finally:
+        if os.path.exists(work_dir):
+            import shutil
+            shutil.rmtree(work_dir)
+
+
+@pytest.mark.asyncio
+async def test_regenerate_session_expired():
+    request_id = "11111111-2222-3333-4444-555555555555"
+
+    resume_data = {
+        "name": "Test User",
+        "title": "Developer",
+        "contact": {"email": "test@example.com", "phone": "000", "location": "NYC"},
+        "summary": "Test summary.",
+        "experience": [],
+        "skills": [],
+        "education": [],
+        "certifications": [],
+        "achievements": [],
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(f"/regenerate/{request_id}", json=resume_data)
+
+    assert response.status_code == 404
+    assert "expired" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_health_endpoint():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"

@@ -3,7 +3,9 @@ import os
 import re
 import uuid
 import shutil
+import time
 import uvicorn
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Path
 from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
@@ -15,10 +17,42 @@ from pdf_generator import generate_pdf
 
 load_dotenv()
 
-app = FastAPI(title="Resume Tailor")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 TMP_BASE = "/tmp/resume-tailor"
+MAX_PDF_SIZE = 10 * 1024 * 1024
+MAX_PHOTO_SIZE = 5 * 1024 * 1024
+CLEANUP_INTERVAL = 600
+SESSION_MAX_AGE = 3600
+
+
+async def cleanup_old_sessions():
+    while True:
+        try:
+            if os.path.exists(TMP_BASE):
+                now = time.time()
+                for entry in os.listdir(TMP_BASE):
+                    session_dir = os.path.join(TMP_BASE, entry)
+                    if os.path.isdir(session_dir):
+                        dir_age = now - os.path.getmtime(session_dir)
+                        if dir_age > SESSION_MAX_AGE:
+                            shutil.rmtree(session_dir, ignore_errors=True)
+        except Exception:
+            pass
+        await asyncio.sleep(CLEANUP_INTERVAL)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    cleanup_task = asyncio.create_task(cleanup_old_sessions())
+    yield
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="Resume Tailor", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 def cleanup_dir(path: str):
@@ -158,16 +192,21 @@ async def tailor(
 
     try:
         pdf_path = os.path.join(work_dir, "input.pdf")
+        pdf_content = await file.read()
+        if len(pdf_content) > MAX_PDF_SIZE:
+            raise HTTPException(status_code=413, detail="PDF file exceeds 10MB limit.")
         with open(pdf_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
+            f.write(pdf_content)
 
         photo_path = None
         if photo and photo.filename:
+            photo_content = await photo.read()
+            if len(photo_content) > MAX_PHOTO_SIZE:
+                raise HTTPException(status_code=413, detail="Photo file exceeds 5MB limit.")
             photo_ext = os.path.splitext(photo.filename)[1] or ".jpg"
             photo_path = os.path.join(work_dir, f"photo{photo_ext}")
             with open(photo_path, "wb") as f:
-                f.write(await photo.read())
+                f.write(photo_content)
 
         resume_text = extract_text_from_pdf(pdf_path)
 
