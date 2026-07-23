@@ -221,3 +221,83 @@ async def test_health_endpoint():
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+@pytest.mark.asyncio
+@patch("main.refine_resume")
+@patch("main.generate_pdf")
+@patch("main.rewrite_resume")
+@patch("main.extract_text_from_pdf")
+async def test_tailor_endpoint_triggers_refinement(
+    mock_extract, mock_rewrite, mock_genpdf, mock_refine
+):
+    mock_extract.side_effect = [
+        "John Doe\nSoftware Engineer with AWS experience",
+        "John Doe DevOps Engineer with AWS skills",
+        "John Doe DevOps Engineer with AWS Kubernetes Docker Terraform Ansible automation skills",
+    ]
+
+    mock_rewrite.return_value = MockRewriteResult(
+        resume_data={
+            "name": "John Doe",
+            "title": "DevOps Engineer",
+            "contact": {"email": "j@d.com", "phone": "123", "location": "NY"},
+            "summary": "Experienced DevOps engineer with AWS.",
+            "experience": [],
+            "skills": ["AWS"],
+            "education": [],
+            "certifications": [],
+            "achievements": [],
+        },
+        keywords_added=["AWS"],
+        match_score=60,
+    )
+
+    def fake_gen(data, output_path, photo_path=None):
+        with open(output_path, "wb") as f:
+            f.write(b"%PDF-1.4 fake pdf content here")
+        return output_path
+
+    mock_genpdf.side_effect = fake_gen
+
+    refined_resume_data = {
+        "name": "John Doe",
+        "title": "DevOps Engineer",
+        "contact": {"email": "j@d.com", "phone": "123", "location": "NY"},
+        "summary": "Experienced DevOps engineer with AWS, Kubernetes, Docker, Terraform, and Ansible.",
+        "experience": [],
+        "skills": ["AWS", "Kubernetes", "Docker", "Terraform", "Ansible"],
+        "education": [],
+        "certifications": [],
+        "achievements": [],
+    }
+    mock_refine.return_value = refined_resume_data
+
+    jd_text = (
+        "Looking for a DevOps engineer with AWS, Kubernetes, Docker, Terraform, "
+        "and Ansible experience. Must have strong infrastructure automation skills."
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/tailor",
+            files={"file": ("resume.pdf", b"%PDF-fake", "application/pdf")},
+            data={"job_description": jd_text},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    mock_refine.assert_called_once()
+    call_args = mock_refine.call_args
+    called_resume_data = call_args[0][0]
+    called_missing = call_args[0][1]
+    assert called_resume_data["skills"] == ["AWS"]
+    for kw in ["Kubernetes", "Docker", "Terraform", "Ansible"]:
+        assert kw in called_missing
+
+    assert mock_genpdf.call_count == 2
+    assert data["match_score"] == 100
+    assert data["keywords_missing"] == []
+    assert data["resume_data"] == refined_resume_data
