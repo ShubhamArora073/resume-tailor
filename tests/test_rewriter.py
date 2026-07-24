@@ -47,6 +47,13 @@ def test_parse_response_invalid_json_raises():
         parse_response("not json at all")
 
 
+def test_model_and_timeout_defaults():
+    from rewriter import MODEL, TIMEOUT
+    assert MODEL == os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+    assert isinstance(TIMEOUT, int)
+    assert TIMEOUT > 0
+
+
 @patch.dict(os.environ, {"AI_GATEWAY_KEY": "fake-key", "AI_GATEWAY_USER": "test@test.com"})
 @patch("rewriter.anthropic")
 def test_rewrite_resume_calls_claude_and_returns_result(mock_anthropic):

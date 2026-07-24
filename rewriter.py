@@ -6,6 +6,9 @@ from dataclasses import dataclass
 import anthropic
 import httpx
 
+MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+TIMEOUT = int(os.environ.get("CLAUDE_TIMEOUT", "120"))
+
 
 @dataclass
 class RewriteResult:
@@ -174,7 +177,7 @@ Return ONLY valid JSON, no markdown, no explanation."""
 
 def _make_client() -> anthropic.Anthropic:
     ssl_context = ssl.create_default_context()
-    http_client = httpx.Client(verify=ssl_context, timeout=120.0)
+    http_client = httpx.Client(verify=ssl_context, timeout=float(TIMEOUT))
 
     if os.environ.get("AI_GATEWAY_URL"):
         return anthropic.Anthropic(
@@ -200,7 +203,7 @@ def refine_resume(current_data: dict, missing_keywords: list[str]) -> dict:
     )
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=MODEL,
         max_tokens=16384,
         system="You refine resumes to improve ATS keyword coverage. Only incorporate keywords that fit naturally. Never fabricate experience. Return valid JSON only.",
         messages=[{"role": "user", "content": prompt}],
@@ -221,7 +224,7 @@ def rewrite_resume(resume_text: str, job_description: str) -> RewriteResult:
     prompt = build_prompt(resume_text, job_description)
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=MODEL,
         max_tokens=16384,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
